@@ -18,8 +18,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-
-
 st.title("🏭 Industrial Cutting & Slitting Optimizer (Metric)")
 
 # ------------------------------------------------------------------
@@ -49,7 +47,7 @@ with st.sidebar:
 # ------------------------------------------------------------------
 def generate_cutting_patterns(roll_width, sizes, min_size):
     patterns = []
-    limit = 50000 # Memory safety threshold
+    limit = 50000  # Memory safety threshold
     brake_triggered = False
 
     def backtrack(i, used, counts):
@@ -64,7 +62,8 @@ def generate_cutting_patterns(roll_width, sizes, min_size):
             return
         max_cuts = (roll_width - used) // sizes[i]
         for c in range(max_cuts + 1):
-            if brake_triggered: break
+            if brake_triggered:
+                break
             backtrack(i + 1, used + c * sizes[i], counts + [c])
 
     backtrack(0, 0, [])
@@ -73,6 +72,11 @@ def generate_cutting_patterns(roll_width, sizes, min_size):
     if brake_triggered:
         return [], True
     return patterns, False
+
+# Helper function to safely extract values from PuLP variables
+def safe_val(var):
+    val = pulp.value(var)
+    return int(round(val)) if val is not None else 0
 
 # ------------------------------------------------------------------
 # --- 4. EXECUTION AND RESULTS ---
@@ -100,33 +104,43 @@ if st.button("🚀 Run Production Optimization"):
         
         for roll_width in large_rolls:
             patterns, _ = generate_cutting_patterns(roll_width, customer_sizes, min_size)
-            if not patterns: continue
+            if not patterns:
+                continue
 
             model = pulp.LpProblem(f"Opt_{roll_width}", pulp.LpMinimize)
-            x = pulp.LpVariable.dicts("P", range(len(patterns)), lowBound=0, cat="Integer")
+            
+            # Explicitly set integer variable category using pulp.LpInteger
+            x = pulp.LpVariable.dicts("P", range(len(patterns)), lowBound=0, cat=pulp.LpInteger)
+            
             model += pulp.lpSum(x[j] for j in range(len(patterns)))
             for i, size in enumerate(customer_sizes):
                 model += pulp.lpSum(patterns[j][i] * x[j] for j in range(len(patterns))) >= order_demand[size]
 
+            # Solve LP Model
             model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=30))
 
-            total_rolls = sum(int(round(pulp.value(x[j]))) for j in range(len(patterns)))
+            # Check if model found a valid solution
+            if pulp.LpStatus[model.status] != "Optimal":
+                st.warning(f"⚠️ No feasible solution found for {roll_width} mm roll.")
+                continue
+
+            total_rolls = sum(safe_val(x[j]) for j in range(len(patterns)))
             total_material = int(total_rolls * roll_width)
             
             pattern_rows = []
             total_scrap = 0
             for j, p in enumerate(patterns):
-                count = int(round(pulp.value(x[j])))
+                count = safe_val(x[j])
                 if count > 0:
                     used_w = sum(p[i] * customer_sizes[i] for i in range(len(customer_sizes)))
                     scrap_per_roll = roll_width - used_w
-                    run_scrap = scrap_per_roll * count # Total Run Scrap Logic
+                    run_scrap = scrap_per_roll * count  # Total Run Scrap Logic
                     total_scrap += run_scrap
                     
                     pattern_rows.append({
                         "Cutting Pattern": p,
                         "Scrap/Roll (mm)": f"{scrap_per_roll} mm",
-                        "Total Run Scrap": f"{run_scrap} mm", # Added column
+                        "Total Run Scrap": f"{run_scrap} mm",
                         "Reel Set Count": count
                     })
 

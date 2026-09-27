@@ -6,7 +6,6 @@ from pulp import (
     LpVariable,
     LpInteger,
     lpSum,
-    PULP_CBC_CMD,
     LpStatus,
     value,
 )
@@ -144,8 +143,8 @@ if st.button("🚀 Run Production Optimization"):
                     >= order_demand[size]
                 )
 
-            # Solve LP Model
-            model.solve(PULP_CBC_CMD(msg=0, timeLimit=30))
+            # Solve LP Model (using default auto-selected solver)
+            model.solve()
 
             # Verify that an optimal solution was reached
             if LpStatus[model.status] != "Optimal":

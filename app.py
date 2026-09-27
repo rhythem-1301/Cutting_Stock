@@ -82,7 +82,6 @@ def generate_cutting_patterns(roll_width, sizes, min_size):
 
     backtrack(0, 0, [])
 
-    # Logic: If brake is hit, return EMPTY so no false results show
     if brake_triggered:
         return [], True
     return patterns, False
